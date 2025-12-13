@@ -124,13 +124,12 @@ module cookie_cutter() {
 //      3D STAMP PIECE      //
 //////////////////////////////
 module stamp_detail_2d(inset_outline=0.2, inset_detail=0.2) {
-    // Raised = (cookie interior) - (black/detail regions)
+    
     difference() {
         offset(delta = -inset_outline) OUTLINE();
         offset(delta = -inset_detail)  DETAIL();
     }
 }
-// (B) If DETAIL is the interior islands:
 
 module WHITE_AREAS_2D() {
   intersection() {
@@ -139,15 +138,6 @@ module WHITE_AREAS_2D() {
   }
 }
 
-// (A) If DETAIL is the black silhouette blob, use this instead:
-/*
-module WHITE_AREAS_2D() {
-   difference() {
-     offset(delta=-0.2) OUTLINE();
-     offset(delta=-0.2) DETAIL();
-   }
- }
-*/
 module stamp_handle() {
     // Base flare (strong attachment)
     cylinder(h = handle_base_h_mm, r = handle_base_r_mm);
@@ -210,5 +200,4 @@ module cookie_stamp() {
 // Preview both:
 if(RENDER_MODE == "cutter") cookie_cutter();
 if (RENDER_MODE == "stamp") cookie_stamp();    
-//translate([-80, 0, 0]) cookie_cutter();
-//if (make_stamp) translate([80, 0, 0]) cookie_stamp();
+
