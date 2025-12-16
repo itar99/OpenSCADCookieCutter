@@ -5,14 +5,13 @@
 // ====== INPUT FILE ======
 art_file = "niceCookie";   // single SVG with outline + inner details
 //outline_file = str(art_file, "_outline.svg");
-outline_file = "niceCookie_outline.svg";
+outline_file = str(art_file, "_outline.svg");
 detail_file = str(art_file, "_detail.svg");
-RENDER_MODE = "stamp"; // options are "cutter" to create the cookie cutter or "stamp" to create the detailed stamp
+RENDER_MODE = "cutter"; // options are "cutter" to create the cookie cutter or "stamp" to create the detailed stamp
 
 // Direct imports for debugging:
 module OUTLINE() import(outline_file, center=true);
 module DETAIL()  import(detail_file, center=true);
-module NONSENSE() import(art_file, center=true, layer="non-existant-layer");
 
 // --- Stamp handle settings ---
 STAMP_HANDLE       = true;
@@ -29,25 +28,19 @@ scale_xy = 1.0;  // mm per SVG unit
 
 // ====== CUTTER GEOMETRY ======
 cutter_height      = 16;   // wall height
-cutting_edge_h     = 2;    // bevel height at bottom
 
-wall_thickness     = 0.8;  // main wall thickness
-inner_shrink       = 0.2;  // inset for inner wall
+wall_thickness     = 2;  // main wall thickness
+inner_shrink       = 0.6;  // inset for inner wall
 
-outer_lip_width    = 1.2;  // extra outer “brim” for strength
-outer_lip_height   = 8;    // height of that lip
+outer_lip_width    = 3;  // extra outer “brim” for strength
+outer_lip_height   = 4;    // height of that lip
+
+bevel_band_h = 3;     // height of beveled zone at top
+edge_width   = 0.1;   // outer wall thickness at cutting edge
+bevel_steps = 10;  // smoothness (8–16 is fine)
 
 // ====== STAMP GEOMETRY ======
-make_stamp         = true;
-
-stamp_base_thick   = 3;
-stamp_detail_h     = 1.2;
-stamp_inset        = 1;    // shrink stamp perimeter inside cutter
-stamp_detail       = 1.5;
 $fn = 80;
-inset_outline = 0.2;   // shrink detail boundary so it stays off the cutter wall
-inset_detail  = 0.2;   // shrink the subtracted black regions slightly
-
 
 //////////////////////////////
 //   SHAPE HELPERS         //
@@ -57,19 +50,6 @@ inset_detail  = 0.2;   // shrink the subtracted black regions slightly
 module art_2d() {
     scale([scale_xy, scale_xy, 1])
         import(outline_file, center = true);
-}
-
-// 2D ring used for cutter wall
-module cutter_wall_2d() {
-    difference() {
-        // outer edge including lip width
-        offset(delta = wall_thickness + outer_lip_width)
-            art_2d();
-
-        // inner edge
-        offset(delta = -inner_shrink)
-            art_2d();
-    }
 }
 
 // Lip-only region
@@ -92,6 +72,27 @@ module cutter_core_wall_2d() {
     }
 }
 
+module cutter_ring_2d(outer) {
+    difference() {
+        offset(delta = outer) art_2d();
+        offset(delta = -inner_shrink) art_2d();
+    }
+}
+
+module cutter_top_bevel_3d() {
+
+    step_h = bevel_band_h / bevel_steps;
+
+    for (i = [0 : bevel_steps-1]) {
+        t = (i + 1) / bevel_steps;   // 0 → 1 as we go UP
+        outer_i = wall_thickness - (wall_thickness - edge_width) * t;
+
+        translate([0, 0, (cutter_height - bevel_band_h) + i * step_h])
+            linear_extrude(height = step_h + 0.001)
+                cutter_ring_2d(outer_i);
+    }
+}
+
 //////////////////////////////
 //    3D CUTTER BODY        //
 //////////////////////////////
@@ -99,38 +100,27 @@ module cutter_core_wall_2d() {
 module cookie_cutter() {
 
     // 1) main wall
-    linear_extrude(height = cutter_height)
+    //linear_extrude(height = cutter_height)
+    //    cutter_core_wall_2d();
+    // 1) straight wall up to bevel zone
+    linear_extrude(height = cutter_height - bevel_band_h)
         cutter_core_wall_2d();
 
-    // 2) outer lip for strength
-    linear_extrude(height = outer_lip_height)
-        cutter_lip_2d();
+    // 2) beveled cutting edge at the TOP
+    cutter_top_bevel_3d();
+    //cutter_taper_band_3d();
 
-    // 3) beveled cutting edge
-    if (cutting_edge_h > 0) {
-        hull() {
-            linear_extrude(height = 0.1)
-                cutter_core_wall_2d();
-
-            translate([0, 0, cutting_edge_h])
-                linear_extrude(height = 0.1)
-                    offset(delta = -0.2)
-                        cutter_core_wall_2d();
-        }
-    }
+    // reinforcement lip above bevel
+    translate([0,0,0])
+        linear_extrude(height = outer_lip_height)
+            cutter_lip_2d();
+            
+            
 }
 
 //////////////////////////////
 //      3D STAMP PIECE      //
 //////////////////////////////
-module stamp_detail_2d(inset_outline=0.2, inset_detail=0.2) {
-    
-    difference() {
-        offset(delta = -inset_outline) OUTLINE();
-        offset(delta = -inset_detail)  DETAIL();
-    }
-}
-
 module WHITE_AREAS_2D() {
   intersection() {
     offset(delta=-0.2) OUTLINE();
