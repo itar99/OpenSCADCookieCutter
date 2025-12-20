@@ -101,6 +101,70 @@ def contour_to_path_d(contour):
     d.append("Z")
     return " ".join(d)
 
+def write_meta_scad(meta_path: str, w_u: float, h_u: float) -> None:
+    """
+    Writes OpenSCAD include file with outline bounds in SVG/viewBox units.
+    """
+    with open(meta_path, "w", encoding="utf-8") as f:
+        f.write(f"ART_W_U = {w_u:.6f};\n")
+        f.write(f"ART_H_U = {h_u:.6f};\n")
+
+
+def bbox_from_polys(polys):
+    """
+    Accepts either:
+      - list of polygons: [[(x,y), (x,y), ...], ...]
+      - OpenCV contours: [array(N,1,2), array(N,1,2), ...]
+      - OpenCV contours: [list([ [x,y], ... ]), ...] with extra nesting
+    Returns: min_x, min_y, max_x, max_y
+    """
+    min_x = float("inf")
+    min_y = float("inf")
+    max_x = float("-inf")
+    max_y = float("-inf")
+
+    n_points = 0
+
+    for poly in polys:
+        if poly is None:
+            continue
+
+        arr = np.asarray(poly)
+
+        # OpenCV contour formats commonly become:
+        # (N,1,2) or (N,2)
+        if arr.ndim == 3 and arr.shape[-1] == 2:
+            arr = arr.reshape(-1, 2)
+        elif arr.ndim == 2 and arr.shape[-1] == 2:
+            pass
+        else:
+            # Fall back: try iterating as (x,y) pairs
+            try:
+                for pt in poly:
+                    x, y = pt
+                    min_x = min(min_x, float(x))
+                    min_y = min(min_y, float(y))
+                    max_x = max(max_x, float(x))
+                    max_y = max(max_y, float(y))
+                    n_points += 1
+                continue
+            except Exception as e:
+                raise TypeError(f"Unsupported contour/polygon format: {type(poly)} shape={getattr(arr, 'shape', None)}") from e
+
+        # Fast path for numpy arrays
+        xs = arr[:, 0].astype(float)
+        ys = arr[:, 1].astype(float)
+        min_x = min(min_x, float(xs.min()))
+        min_y = min(min_y, float(ys.min()))
+        max_x = max(max_x, float(xs.max()))
+        max_y = max(max_y, float(ys.max()))
+        n_points += arr.shape[0]
+
+    if n_points == 0:
+        raise ValueError("bbox_from_polys: empty polygon/contour list")
+
+    return min_x, min_y, max_x, max_y
+
 
 def create_svg(width, height, outline_contours, detail_contours, output_path):
     """
@@ -306,6 +370,13 @@ def main():
     write_svg_detail_evenodd(w, h, detail_contours_filtered,  base + "_detail.svg")
     print("Wrote:", base + "_outline.svg", "and", base + "_detail.svg")
 
+    min_x, min_y, max_x, max_y = bbox_from_polys(outline_contours_filtered)
+    art_w_u = max_x - min_x
+    art_h_u = max_y - min_y
+
+    meta_path = f"{base}_meta.scad"
+    write_meta_scad(meta_path, art_w_u, art_h_u)
+    print("Wrote: ", base + "_meta.scad")
 
 
 if __name__ == "__main__":

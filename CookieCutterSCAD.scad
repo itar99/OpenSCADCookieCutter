@@ -3,15 +3,35 @@
 //////////////////////////////
 
 // ====== INPUT FILE ======
-art_file = "niceCookie";   // single SVG with outline + inner details
+art_file = "Nice";   // single SVG with outline + inner details
 //outline_file = str(art_file, "_outline.svg");
 outline_file = str(art_file, "_outline.svg");
 detail_file = str(art_file, "_detail.svg");
 RENDER_MODE = "cutter"; // options are "cutter" to create the cookie cutter or "stamp" to create the detailed stamp
 
 // Direct imports for debugging:
-module OUTLINE() import(outline_file, center=true);
-module DETAIL()  import(detail_file, center=true);
+module OUTLINE() import(outline_file, center=true, dpi=SVG_DPI);
+module DETAIL()  import(detail_file, center=true, dpi=SVG_DPI);
+
+// --- SCALED imports (used for modeling) ---
+module OUTLINE_2D() {
+    scale([scale_xy, scale_xy, 1])
+        import(outline_file, center=true, dpi=SVG_DPI);
+}
+
+module DETAIL_2D() {
+    scale([scale_xy, scale_xy, 1])
+        import(detail_file, center=true, dpi=SVG_DPI);
+}
+
+// size information
+ART_W_U = 90;
+ART_H_U = 90;
+echo("ART_W_U:", ART_W_U);
+echo("ART_H_U:", ART_H_U);
+
+// Target smallest dimension (mm) after scaling
+target_min_mm = 90;
 
 // --- Stamp handle settings ---
 STAMP_HANDLE       = true;
@@ -24,7 +44,11 @@ handle_base_h_mm   = 4;    // base thickness
 handle_fillet_mm   = 2;    // softens transitions (approx)
 
 // ====== SCALE / SIZE ======
-scale_xy = 1.0;  // mm per SVG unit
+//scale_xy = 1.0;  // mm per SVG unit
+SVG_DPI = 96;                 // treat SVG units as px at 96 dpi
+MM_PER_U = 25.4 / SVG_DPI;    // mm per SVG unit (px)
+scale_xy = target_min_mm / (min2(ART_W_U, ART_H_U) * MM_PER_U);
+
 
 // ====== CUTTER GEOMETRY ======
 cutter_height      = 16;   // wall height
@@ -41,10 +65,15 @@ bevel_steps = 10;  // smoothness (8–16 is fine)
 
 // ====== STAMP GEOMETRY ======
 $fn = 80;
+stamp_clearance = 0.4; // mm, tweak for printer tolerance
 
 //////////////////////////////
 //   SHAPE HELPERS         //
 //////////////////////////////
+
+function min2(a,b) = (a < b) ? a : b;
+// mm per SVG unit
+
 
 // Full artwork as 2D
 module art_2d() {
@@ -56,9 +85,9 @@ module art_2d() {
 module cutter_lip_2d() {
     difference() {
         offset(delta = wall_thickness + outer_lip_width)
-            art_2d();
+            OUTLINE_2D();
         offset(delta = wall_thickness)
-            art_2d();
+            OUTLINE_2D();
     }
 }
 
@@ -66,16 +95,16 @@ module cutter_lip_2d() {
 module cutter_core_wall_2d() {
     difference() {
         offset(delta = wall_thickness)
-            art_2d();
+            OUTLINE_2D();
         offset(delta = -inner_shrink)
-            art_2d();
+            OUTLINE_2D();
     }
 }
 
 module cutter_ring_2d(outer) {
     difference() {
-        offset(delta = outer) art_2d();
-        offset(delta = -inner_shrink) art_2d();
+        offset(delta = outer) OUTLINE_2D();
+        offset(delta = -inner_shrink) OUTLINE_2D();
     }
 }
 
@@ -123,8 +152,8 @@ module cookie_cutter() {
 //////////////////////////////
 module WHITE_AREAS_2D() {
   intersection() {
-    offset(delta=-0.2) OUTLINE();
-    offset(delta=-0.2) DETAIL();
+    offset(delta=-0.2) OUTLINE_2D();
+    offset(delta=-0.2) DETAIL_2D();
   }
 }
 
@@ -159,8 +188,8 @@ module cookie_stamp() {
   raise_h    = 1.2;
   color("lightgray")
   linear_extrude(height=base_thick)
-    offset(delta=-0.2)
-      OUTLINE();
+    offset(delta=-stamp_clearance)
+      OUTLINE_2D();
 
   // raised detail
   color("red")
